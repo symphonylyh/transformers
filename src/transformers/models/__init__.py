@@ -84,10 +84,7 @@ from . import (
     pegasus,
     perceiver,
     phobert,
-<<<<<<< HEAD
-=======
     plbart,
->>>>>>> master
     poolformer,
     prophetnet,
     qdqbert,

@@ -2810,8 +2810,6 @@ class PerceiverPreTrainedModel(metaclass=DummyObject):
         requires_backends(self, ["torch"])
 
 
-<<<<<<< HEAD
-=======
 PLBART_PRETRAINED_MODEL_ARCHIVE_LIST = None
 
 
@@ -2850,7 +2848,6 @@ class PLBartPreTrainedModel(metaclass=DummyObject):
         requires_backends(self, ["torch"])
 
 
->>>>>>> master
 POOLFORMER_PRETRAINED_MODEL_ARCHIVE_LIST = None
 
 
