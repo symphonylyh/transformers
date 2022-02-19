@@ -248,6 +248,11 @@
       title: Pegasus
     - local: model_doc/phobert
       title: PhoBERT
+<<<<<<< HEAD
+=======
+    - local: model_doc/plbart
+      title: PLBart
+>>>>>>> master
     - local: model_doc/poolformer
       title: PoolFormer
     - local: model_doc/prophetnet
