@@ -375,7 +375,7 @@ class MaskFormerFeatureExtractor(FeatureExtractionMixin, ImageFeatureExtractionM
 
     def post_process_segmentation(
         self, outputs: "MaskFormerForInstanceSegmentationOutput", target_size: Tuple[int, int] = None
-    ) -> Tensor:
+    ) -> "torch.Tensor":
         """
         Converts the output of [`MaskFormerForInstanceSegmentationOutput`] into image segmentation predictions. Only
         supports PyTorch.
@@ -393,28 +393,26 @@ class MaskFormerFeatureExtractor(FeatureExtractionMixin, ImageFeatureExtractionM
         # masks_queries_logits has shape [BATCH, QUERIES, HEIGHT, WIDTH]
         masks_queries_logits = outputs.masks_queries_logits
         if target_size is not None:
-            masks_queries_logits: Tensor = interpolate(
+            masks_queries_logits = interpolate(
                 masks_queries_logits,
                 size=target_size,
                 mode="bilinear",
                 align_corners=False,
             )
         # remove the null class `[..., :-1]`
-        masks_classes: Tensor = class_queries_logits.softmax(dim=-1)[..., :-1]
+        masks_classes = class_queries_logits.softmax(dim=-1)[..., :-1]
         # mask probs has shape [BATCH, QUERIES, HEIGHT, WIDTH]
-        masks_probs: Tensor = masks_queries_logits.sigmoid()
+        masks_probs = masks_queries_logits.sigmoid()
         # now we want to sum over the queries,
         # $ out_{c,h,w} =  \sum_q p_{q,c} * m_{q,h,w} $
         # where $ softmax(p) \in R^{q, c} $ is the mask classes
         # and $ sigmoid(m) \in R^{q, h, w}$ is the mask probabilities
         # b(atch)q(uery)c(lasses), b(atch)q(uery)h(eight)w(idth)
-        segmentation: Tensor = torch.einsum("bqc, bqhw -> bchw", masks_classes, masks_probs)
+        segmentation = torch.einsum("bqc, bqhw -> bchw", masks_classes, masks_probs)
 
         return segmentation
 
-    def remove_low_and_no_objects(
-        self, masks: Tensor, scores: Tensor, labels: Tensor, object_mask_threshold: float, num_labels: int
-    ) -> Tuple[Tensor, Tensor, Tensor]:
+    def remove_low_and_no_objects(self, masks, scores, labels, object_mask_threshold, num_labels):
         """
         Binarize the given masks using `object_mask_threshold`, it returns the associated values of `masks`, `scores`
         and `labels`
@@ -439,13 +437,13 @@ class MaskFormerFeatureExtractor(FeatureExtractionMixin, ImageFeatureExtractionM
         if not (masks.shape[0] == scores.shape[0] == labels.shape[0]):
             raise ValueError("mask, scores and labels must have the same shape!")
 
-        to_keep: Tensor = labels.ne(num_labels) & (scores > object_mask_threshold)
+        to_keep = labels.ne(num_labels) & (scores > object_mask_threshold)
 
         return masks[to_keep], scores[to_keep], labels[to_keep]
 
     def post_process_semantic_segmentation(
         self, outputs: "MaskFormerForInstanceSegmentationOutput", target_size: Tuple[int, int] = None
-    ) -> Tensor:
+    ) -> "torch.Tensor":
         """
         Converts the output of [`MaskFormerForInstanceSegmentationOutput`] into semantic segmentation predictions. Only
         supports PyTorch.
@@ -457,16 +455,16 @@ class MaskFormerFeatureExtractor(FeatureExtractionMixin, ImageFeatureExtractionM
         Returns:
             `torch.Tensor`: A tensor of shape `batch_size, height, width`
         """
-        segmentation: Tensor = self.post_process_segmentation(outputs, target_size)
-        semantic_segmentation: Tensor = segmentation.argmax(dim=1)
+        segmentation = self.post_process_segmentation(outputs, target_size)
+        semantic_segmentation = segmentation.argmax(dim=1)
         return semantic_segmentation
 
     def post_process_panoptic_segmentation(
         self,
         outputs: "MaskFormerForInstanceSegmentationOutput",
-        object_mask_threshold: Optional[float] = 0.8,
-        overlap_mask_area_threshold: Optional[float] = 0.8,
-        is_thing_map: Dict[int, bool] = None,
+        object_mask_threshold: float = 0.8,
+        overlap_mask_area_threshold: float = 0.8,
+        is_thing_map: Optional[Dict[int, bool]] = None,
     ) -> List[Dict]:
         """
         Converts the output of [`MaskFormerForInstanceSegmentationOutput`] into image panoptic segmentation
@@ -496,11 +494,11 @@ class MaskFormerFeatureExtractor(FeatureExtractionMixin, ImageFeatureExtractionM
             # default to is_thing_map of COCO panoptic
             is_thing_map = {i: i <= 90 for i in range(201)}
         # class_queries_logitss has shape [BATCH, QUERIES, CLASSES + 1]
-        class_queries_logits: Tensor = outputs.class_queries_logits
+        class_queries_logits = outputs.class_queries_logits
         # keep track of the number of labels, subtract -1 for null class
-        num_labels: int = class_queries_logits.shape[-1] - 1
+        num_labels = class_queries_logits.shape[-1] - 1
         # masks_queries_logits has shape [BATCH, QUERIES, HEIGHT, WIDTH]
-        masks_queries_logits: Tensor = outputs.masks_queries_logits
+        masks_queries_logits = outputs.masks_queries_logits
         # since all images are padded, they all have the same spatial dimensions
         _, _, height, width = masks_queries_logits.shape
         # for each query, the best scores and their indeces
@@ -514,38 +512,38 @@ class MaskFormerFeatureExtractor(FeatureExtractionMixin, ImageFeatureExtractionM
             mask_probs, pred_scores, pred_labels = self.remove_low_and_no_objects(
                 mask_probs, pred_scores, pred_labels, object_mask_threshold, num_labels
             )
-            we_detect_something: bool = mask_probs.shape[0] > 0
+            we_detect_something = mask_probs.shape[0] > 0
 
-            segmentation: Tensor = torch.zeros((height, width), dtype=torch.int32, device=mask_probs.device)
+            segmentation = torch.zeros((height, width), dtype=torch.int32, device=mask_probs.device)
             segments: List[Dict] = []
 
             if we_detect_something:
-                current_segment_id: int = 0
+                current_segment_id = 0
                 # weight each mask by its score
                 mask_probs *= pred_scores.view(-1, 1, 1)
                 # find out for each pixel what is the most likely class to be there
-                mask_labels: Tensor = mask_probs.argmax(0)
+                mask_labels = mask_probs.argmax(0)
                 # mask_labels shape = [H,W] where each pixel has a class label
                 stuff_memory_list: Dict[str, int] = {}
                 # this is a map between stuff and segments id, the used it to keep track of the instances of one class
                 for k in range(pred_labels.shape[0]):
-                    pred_class: int = pred_labels[k].item()
+                    pred_class = pred_labels[k].item()
                     # check if pred_class is not a "thing", so it can be merged with other instance. For example, class "sky" cannot have more then one instance
                     is_stuff = not is_thing_map[pred_class]
                     # get the mask associated with the k class
-                    mask_k: Tensor = mask_labels == k
+                    mask_k = mask_labels == k
                     # create the area, since bool we just need to sum :)
-                    mask_k_area: Tensor = mask_k.sum()
+                    mask_k_area = mask_k.sum()
                     # this is the area of all the stuff in query k
                     # TODO not 100%, why are the taking the k query here????
-                    original_area: Tensor = (mask_probs[k] >= 0.5).sum()
+                    original_area = (mask_probs[k] >= 0.5).sum()
 
-                    mask_does_exist: bool = mask_k_area > 0 and original_area > 0
+                    mask_does_exist = mask_k_area > 0 and original_area > 0
 
                     if mask_does_exist:
                         # find out how much of the all area mask_k is using
-                        area_ratio: float = mask_k_area / original_area
-                        mask_k_is_overlapping_enough: bool = area_ratio.item() > overlap_mask_area_threshold
+                        area_ratio = mask_k_area / original_area
+                        mask_k_is_overlapping_enough = area_ratio.item() > overlap_mask_area_threshold
 
                         if mask_k_is_overlapping_enough:
                             # merge stuff regions
