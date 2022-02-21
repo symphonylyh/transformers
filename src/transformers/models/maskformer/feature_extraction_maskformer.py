@@ -374,7 +374,7 @@ class MaskFormerFeatureExtractor(FeatureExtractionMixin, ImageFeatureExtractionM
         return encoded_inputs
 
     def post_process_segmentation(
-        self, outputs: MaskFormerForInstanceSegmentationOutput, target_size: Tuple[int, int] = None
+        self, outputs: "MaskFormerForInstanceSegmentationOutput", target_size: Tuple[int, int] = None
     ) -> Tensor:
         """
         Converts the output of [`MaskFormerForInstanceSegmentationOutput`] into image segmentation predictions. Only
@@ -463,7 +463,7 @@ class MaskFormerFeatureExtractor(FeatureExtractionMixin, ImageFeatureExtractionM
 
     def post_process_panoptic_segmentation(
         self,
-        outputs: MaskFormerForInstanceSegmentationOutput,
+        outputs: "MaskFormerForInstanceSegmentationOutput",
         object_mask_threshold: Optional[float] = 0.8,
         overlap_mask_area_threshold: Optional[float] = 0.8,
         is_thing_map: Dict[int, bool] = None,
