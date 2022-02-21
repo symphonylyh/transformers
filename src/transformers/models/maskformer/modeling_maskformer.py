@@ -1612,7 +1612,7 @@ class MaskFormerHungarianMatcher(nn.Module):
         self.cost_dice = cost_dice
 
     @torch.no_grad()
-    def forward(self, outputs: Dict[str, Tensor], labels: Dict[str, Tensor]) -> List[Tuple[Tensor]]:
+    def forward(self, masks_queries_logits, class_queries_logits, mask_labels, class_labels) -> List[Tuple[Tensor]]:
         """Performs the matching
 
         Params:
@@ -1624,8 +1624,8 @@ class MaskFormerHungarianMatcher(nn.Module):
 
             labels (`Dict[str, Tensor]`):
                 This is a list of labels (len(labels) = batch_size), where each target is a dict containing:
-                - **labels** -- A `torch.Tensor` of dim `num_target_boxes` (where num_target_boxes is the number of
-                  ground-truth objects in the target) containing the class labels.
+                - **class_labels** -- A `torch.Tensor` of dim `num_target_boxes` (where num_target_boxes is the number
+                  of ground-truth objects in the target) containing the class labels.
                 - **mask_labels** -- A `torch.Tensor` of dim `num_target_boxes, H_gt, W_gt` containing the target
                   masks.
 
@@ -1638,15 +1638,12 @@ class MaskFormerHungarianMatcher(nn.Module):
         """
         indices: List[Tuple[np.array]] = []
 
-        preds_masks = outputs["masks_queries_logits"]
-        labels_masks = labels["mask_labels"]
-        preds_probs = outputs["class_queries_logits"].softmax(dim=-1)
+        preds_masks = masks_queries_logits
+        preds_probs = class_queries_logits.softmax(dim=-1)
         # downsample all masks in one go -> save memory
-        labels_masks = interpolate(labels_masks, size=preds_masks.shape[-2:], mode="nearest")
+        mask_labels = interpolate(mask_labels, size=preds_masks.shape[-2:], mode="nearest")
         # iterate through batch size
-        for pred_probs, pred_mask, target_mask, labels in zip(
-            preds_probs, preds_masks, labels_masks, labels["class_labels"]
-        ):
+        for pred_probs, pred_mask, target_mask, labels in zip(preds_probs, preds_masks, mask_labels, class_labels):
             # Compute the classification cost. Contrary to the loss, we don't use the NLL,
             # but approximate it in 1 - proba[target class].
             # The 1 is a constant that doesn't change the matching, it can be ommitted.
@@ -1722,31 +1719,29 @@ class MaskFormerLoss(nn.Module):
         self.register_buffer("empty_weight", empty_weight)
 
     def loss_labels(
-        self, outputs: Dict[str, Tensor], labels: Dict[str, Tensor], indices: Tuple[np.array], num_masks: int
+        self, class_queries_logits: Tensor, class_labels: Tensor, indices: Tuple[np.array]
     ) -> Dict[str, Tensor]:
         """Compute the losses related to the labels using cross entropy.
 
         Args:
-            outputs (`Dict[str, Tensor]`):
-                A dict of tensors with the **class_queries_logits** key.
-            labels (`Dict[str, Tensor]`):
-                A dict of tensors with the **class_labels** key.
+            class_queries_logits (`torch.Tensor`):
+                A tensor of shape `batch_size, num_queries, num_classes`
+            class_labels (`Dict[str, Tensor]`):
+                A tensor of shape `batch_size, num_classes`
             indices (`Tuple[np.array])`:
                 The indices computed by the Hungarian matcher.
-            num_masks (`int)`:
-                The number of masks, used for normalization.
 
         Returns:
             `Dict[str, Tensor]`: A dict of `torch.Tensor` containing the following key:
             - **loss_cross_entropy** -- The loss computed using cross entropy on the predicted and ground truth labels.
         """
 
-        pred_logits: Tensor = outputs["class_queries_logits"]
+        pred_logits = class_queries_logits
         batch_size, num_queries, _ = pred_logits.shape
 
         idx = self._get_predictions_permutation_indices(indices)
         # shape = [BATCH, N_QUERIES]
-        target_classes_o = torch.cat([target[j] for target, (_, j) in zip(labels["class_labels"], indices)])
+        target_classes_o = torch.cat([target[j] for target, (_, j) in zip(class_labels, indices)])
         # shape = [BATCH, N_QUERIES]
         target_classes = torch.full(
             (batch_size, num_queries), fill_value=self.num_classes, dtype=torch.int64, device=pred_logits.device
@@ -1759,15 +1754,15 @@ class MaskFormerLoss(nn.Module):
         return losses
 
     def loss_masks(
-        self, outputs: Dict[str, Tensor], labels: Dict[str, Tensor], indices: Tuple[np.array], num_masks: int
+        self, masks_queries_logits: Tensor, mask_labels: Tensor, indices: Tuple[np.array], num_masks: int
     ) -> Dict[str, Tensor]:
         """Compute the losses related to the masks using focal and dice loss.
 
         Args:
-            outputs (`Dict[str, Tensor]`):
-                A dict of tensors with the **masks_queries_logits** key.
-            labels (`Dict[str, Tensor]`):
-                A dict of tensors with the **mask_labels** key.
+            masks_queries_logits (`torch.Tensor`):
+                A tensor of shape `batch_size, num_queries, height, width`
+            mask_labels (`torch.Tensor`):
+                A tensor of shape `batch_size, num_queries, height, width`
             indices (`Tuple[np.array])`:
                 The indices computed by the Hungarian matcher.
             num_masks (`int)`:
@@ -1781,9 +1776,9 @@ class MaskFormerLoss(nn.Module):
         """
         src_idx = self._get_predictions_permutation_indices(indices)
         tgt_idx = self._get_targets_permutation_indices(indices)
-        pred_masks = outputs["masks_queries_logits"]  # shape [BATCH, NUM_QUERIES, H, W]
+        pred_masks = masks_queries_logits  # shape [BATCH, NUM_QUERIES, H, W]
         pred_masks = pred_masks[src_idx]  # shape [BATCH * NUM_QUERIES, H, W]
-        target_masks = labels["mask_labels"]  # shape [BATCH, NUM_QUERIES, H, W]
+        target_masks = mask_labels  # shape [BATCH, NUM_QUERIES, H, W]
         target_masks = target_masks[tgt_idx]  # shape [BATCH * NUM_QUERIES, H, W]
         # upsample predictions to the target size, we have to add one dim to use interpolate
         pred_masks = interpolate(
@@ -1817,21 +1812,29 @@ class MaskFormerLoss(nn.Module):
             raise KeyError(f"{loss} not in loss_map")
         return loss_map[loss](outputs, labels, indices, num_masks)
 
-    def forward(self, outputs: Dict[str, Tensor], labels: Dict[str, Tensor]) -> Dict[str, Tensor]:
+    def forward(
+        self,
+        masks_queries_logits: torch.Tensor,
+        class_queries_logits: torch.Tensor,
+        mask_labels: torch.Tensor,
+        class_labels: torch.Tensor,
+        auxilary_predictions: Optional[Dict[str, torch.Tensor]] = None,
+    ) -> Dict[str, Tensor]:
         """
         This performs the loss computation.
 
         Args:
-            outputs (`Dict[str, Tensor]`):
-                A dict of `torch.Tensor` containing at least two keys:
-                - **class_queries_logits** The logits to be used for mask classification.
-                - **masks_queries_logits** The logits to be used for pixel classification.
-                if `use_auxilary_loss` was set to `true` in [`MaskFormerConfig`], then logits the dictionary also
-                contains **auxilary_predictions**.
-            labels (`Dict[str, Tensor]`):
-                A dict of `torch.Tensor` containing two keys:
-                - **class_labels** class labels.
-                - **mask_labels** mask labels.
+            masks_queries_logits (`torch.Tensor`):
+                A tensor of shape `batch_size, num_queries, height, width`
+            class_queries_logits (`torch.Tensor`):
+                A tensor of shape `batch_size, num_queries, num_classes`
+            mask_labels (`torch.Tensor`):
+                A tensor of shape `batch_size, num_classes, height, width`
+            class_labels (`torch.Tensor`):
+                A tensor of shape `batch_size, num_classes`
+            auxilary_predictions (`Dict[str, torch.Tensor]`, *optional*, defaults to `None`):
+                if `use_auxilary_loss` was set to `true` in [`MaskFormerConfig`], then it contains the logits from the
+                inner layers of the Detr's Decoder.
 
         Returns:
             `Dict[str, Tensor]`: A dict of `torch.Tensor` containing two keys:
@@ -1842,36 +1845,33 @@ class MaskFormerLoss(nn.Module):
             if `use_auxilary_loss` was set to `true` in [`MaskFormerConfig`], the dictionary contains addional losses
             for each auxilary predictions.
         """
-        outputs_without_aux = {
-            "masks_queries_logits": outputs["masks_queries_logits"],
-            "class_queries_logits": outputs["class_queries_logits"],
-        }
 
         # Retrieve the matching between the outputs of the last layer and the labels
-        indices = self.matcher(outputs_without_aux, labels)
+        indices = self.matcher(masks_queries_logits, class_queries_logits, mask_labels, class_labels)
 
         # Compute the average number of target masks accross all nodes, for normalization purposes
-        num_masks: Number = self.get_num_masks(labels, device=outputs["masks_queries_logits"].device)
+        num_masks: Number = self.get_num_masks(class_labels, device=class_labels.device)
 
         # Compute all the requested losses
-        losses: Dict[str, Tensor] = {}
-        for loss in self.losses:
-            losses.update(self.get_loss(loss, outputs, labels, indices, num_masks))
+        losses: Dict[str, Tensor] = {
+            **self.loss_masks(masks_queries_logits, mask_labels, indices, num_masks),
+            **self.loss_labels(class_queries_logits, class_labels, indices),
+        }
 
         # In case of auxiliary losses, we repeat this process with the output of each intermediate layer.
-        if "auxilary_predictions" in outputs:
-            for i, aux_outputs in enumerate(outputs["auxilary_predictions"]):
-                indices = self.matcher(aux_outputs, labels)
-                for loss in self.losses:
-                    loss_dict = self.get_loss(loss, aux_outputs, labels, indices, num_masks)
-                    loss_dict = {k + f"_{i}": v for k, v in loss_dict.items()}
-                    losses.update(loss_dict)
+        if auxilary_predictions is not None:
+            for idx, aux_outputs in enumerate(auxilary_predictions):
+                masks_queries_logits = aux_outputs["masks_queries_logits"]
+                class_queries_logits = aux_outputs["class_queries_logits"]
+                loss_dict = self.forward(masks_queries_logits, class_queries_logits, mask_labels, class_labels)
+                loss_dict = {f"{key}_{idx}": value for key, value in loss_dict.items()}
+                losses.update(loss_dict)
 
         return losses
 
-    def get_num_masks(self, labels: Dict[str, Tensor], device: torch.device) -> torch.Tensor:
+    def get_num_masks(self, class_labels: torch.Tensor, device: torch.device) -> torch.Tensor:
         # Compute the average number of target masks accross all nodes, for normalization purposes
-        num_masks = labels["class_labels"].shape[0]
+        num_masks = class_labels.shape[0]
         num_masks_pt = torch.as_tensor([num_masks], dtype=torch.float, device=device)
         return num_masks_pt
 
@@ -2368,8 +2368,17 @@ class MaskFormerForInstanceSegmentation(MaskFormerPretrainedModel):
 
         self.post_init()
 
-    def get_loss_dict(self, outputs: Dict[str, Tensor], labels: Dict[str, Tensor]) -> Dict[str, Tensor]:
-        loss_dict: Dict[str, Tensor] = self.criterion(outputs, labels)
+    def get_loss_dict(
+        self,
+        masks_queries_logits: Tensor,
+        class_queries_logits: Tensor,
+        mask_labels: Tensor,
+        class_labels: Tensor,
+        auxilary_logits: Dict[str, Tensor],
+    ) -> Dict[str, Tensor]:
+        loss_dict: Dict[str, Tensor] = self.criterion(
+            masks_queries_logits, class_queries_logits, mask_labels, class_labels, auxilary_logits
+        )
         # weight each loss by `self.weight_dict[<LOSS_NAME>]`
         weighted_loss_dict: Dict[str, Tensor] = {
             k: v * self.weight_dict[k] for k, v in loss_dict.items() if k in self.weight_dict
@@ -2467,21 +2476,17 @@ class MaskFormerForInstanceSegmentation(MaskFormerPretrainedModel):
             output_attentions=output_attentions,
         )
 
-        class_queries_logits, masks_queries_logits, auxilary_logits = self.get_logits(outputs)
-
         loss, loss_dict, auxilary_logits = None, None, None
+
+        class_queries_logits, masks_queries_logits, auxilary_logits = self.get_logits(outputs)
 
         we_have_labels = mask_labels is not None and class_labels is not None
 
         if we_have_labels:
-            logits: Dict[str, Tensor] = {
-                "masks_queries_logits": masks_queries_logits,
-                "class_queries_logits": class_queries_logits,
-                "auxilary_logits": auxilary_logits,
-            }
-            labels: Dict[str, Tensor] = {"mask_labels": mask_labels, "class_labels": class_labels}
-            loss_dict: Dict[str, Tensor] = self.get_loss_dict(logits, labels)
-            loss: Tensor = self.get_loss(loss_dict)
+            loss_dict: Dict[str, Tensor] = self.get_loss_dict(
+                masks_queries_logits, class_queries_logits, mask_labels, class_labels, auxilary_logits
+            )
+            loss = self.get_loss(loss_dict)
 
         output = MaskFormerForInstanceSegmentationOutput(
             loss=loss,
