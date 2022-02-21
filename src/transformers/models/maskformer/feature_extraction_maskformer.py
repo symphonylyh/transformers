@@ -444,7 +444,7 @@ class MaskFormerFeatureExtractor(FeatureExtractionMixin, ImageFeatureExtractionM
         return masks[to_keep], scores[to_keep], labels[to_keep]
 
     def post_process_semantic_segmentation(
-        self, outputs: MaskFormerForInstanceSegmentationOutput, target_size: Tuple[int, int] = None
+        self, outputs: "MaskFormerForInstanceSegmentationOutput", target_size: Tuple[int, int] = None
     ) -> Tensor:
         """
         Converts the output of [`MaskFormerForInstanceSegmentationOutput`] into semantic segmentation predictions. Only
