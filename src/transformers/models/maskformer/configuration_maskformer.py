@@ -23,10 +23,10 @@ from ..detr import DetrConfig
 from ..swin import SwinConfig
 
 
-MASKFORMER_PRETRAINED_CONFIG_ARCHIVE_MAP = [
-    "facebook/maskformer-swin-base-ade",
+MASKFORMER_PRETRAINED_CONFIG_ARCHIVE_MAP = {
+    "Francesco/maskformer-swin-base-ade": "https://huggingface.co/Francesco/maskformer-swin-base-ade/blob/main/config.json"
     # See all MaskFormer models at https://huggingface.co/models?filter=maskformer
-]
+}
 
 logger = logging.get_logger(__name__)
 
