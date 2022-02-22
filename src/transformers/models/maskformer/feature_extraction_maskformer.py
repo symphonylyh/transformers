@@ -51,10 +51,10 @@ class MaskFormerFeatureExtractor(FeatureExtractionMixin, ImageFeatureExtractionM
             sequence like `(width, height)`, output size will be matched to this. If size is an int, smaller edge of
             the image will be matched to this number. i.e, if `height > width`, then image will be rescaled to `(size *
             height / width, size)`.
-        max_size (`int`, *optional*, defaults to `1333`):
+        max_size (`int`, *optional*, defaults to 1333):
             The largest size an image dimension can have (otherwise it's capped). Only has an effect if `do_resize` is
             set to `True`.
-        size_divisibility (`int`, *optional*, defaults to `32`):
+        size_divisibility (`int`, *optional*, defaults to 32):
             Some backbones need images divisible by a certain number, if not passes it detauls to the value used in
             swin.
         do_normalize (`bool`, *optional*, defaults to `True`):
@@ -111,13 +111,13 @@ class MaskFormerFeatureExtractor(FeatureExtractionMixin, ImageFeatureExtractionM
                 return (height, width)
 
             if width < height:
-                ow = size
-                oh = int(size * height / width)
+                output_width = size
+                output_height = int(size * height / width)
             else:
-                oh = size
-                ow = int(size * width / height)
+                output_height = size
+                output_width = int(size * width / height)
 
-            return (oh, ow)
+            return (output_height, output_width)
 
         def get_size(image_size, size, max_size=None):
             if isinstance(size, (list, tuple)):
@@ -191,8 +191,9 @@ class MaskFormerFeatureExtractor(FeatureExtractionMixin, ImageFeatureExtractionM
                 number of channels, H and W are image height and width.
 
             annotations (`Dict`, `List[Dict]`, *optional*):
-                The corresponding annotations as numpy arrays in the following format: { "masks" : the target mask,
-                with shape [C,H,W], "labels" : the target labels, with shape [C]}
+                The corresponding annotations as dictionary of numpy arrays with the following keys:
+                - **masks** (`np.ndarray`) The target mask of shape `(num_classes, height, width)`.
+                - **labels** (`np.ndarray`) The target labels of shape `(num_classes)`.
 
             pad_and_return_pixel_mask (`bool`, *optional*, defaults to `True`):
                 Whether or not to pad images up to the largest image in a batch and create a pixel mask.
@@ -315,7 +316,8 @@ class MaskFormerFeatureExtractor(FeatureExtractionMixin, ImageFeatureExtractionM
 
         Args:
             pixel_values_list (`List[torch.Tensor]`):
-                List of images (pixel values) to be padded. Each image should be a tensor of shape (C, H, W).
+                List of images (pixel values) to be padded. Each image should be a tensor of shape `(channels, height,
+                width)`.
             return_tensors (`str` or [`~file_utils.TensorType`], *optional*):
                 If set, will return tensors instead of NumPy arrays. If set to `'pt'`, return PyTorch `torch.Tensor`
                 objects.
@@ -473,13 +475,13 @@ class MaskFormerFeatureExtractor(FeatureExtractionMixin, ImageFeatureExtractionM
         Args:
             outputs ([`MaskFormerForInstanceSegmentationOutput`]):
                 The outputs from [`MaskFormerForInstanceSegmentation`]
-            object_mask_threshold (`float`, *optional*, defaults to `0.8`):
+            object_mask_threshold (`float`, *optional*, defaults to 0.8):
                 The object mask threshold.
-            overlap_mask_area_threshold (`float`, *optional*, defaults to `0.8`):
+            overlap_mask_area_threshold (`float`, *optional*, defaults to 0.8):
                 The overlap mask area threshold.
-            is_thing_map (`Dict[int, bool]`, *optional*, defaults to `None`):
-                Dictionary mapping class indices to either True or False, depending on whether or not they are a thing.
-                If not set, defaults to the `is_thing_map` of ADE20K-150 panoptic.
+            is_thing_map (`Dict[int, bool]`, *optional*):
+                Dictionary mapping class indices to either `True` or `False`, depending on whether or not they are a
+                thing. If not set, defaults to the `is_thing_map` of ADE20K-150 panoptic.
 
         Returns:
             `List[Dict]`: A list of dictionaries, one per image, each dictionary containing two keys:
