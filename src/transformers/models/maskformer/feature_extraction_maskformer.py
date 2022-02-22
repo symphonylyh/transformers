@@ -386,7 +386,7 @@ class MaskFormerFeatureExtractor(FeatureExtractionMixin, ImageFeatureExtractionM
 
         Returns:
             `torch.Tensor`:
-                A tensor of shape `batch_size, num_labels, height, width`
+                A tensor of shape (`batch_size, num_labels, height, width`)
         """
         # class_queries_logitss has shape [BATCH, QUERIES, CLASSES + 1]
         class_queries_logits = outputs.class_queries_logits
@@ -419,20 +419,20 @@ class MaskFormerFeatureExtractor(FeatureExtractionMixin, ImageFeatureExtractionM
 
         Args:
             masks (`torch.Tensor`):
-                A tensor of shape `(num_queries, height, width)`
+                A tensor of shape `(num_queries, height, width)`.
             scores (`torch.Tensor`):
-                A tensor of shape `(num_queries)`
+                A tensor of shape `(num_queries)`.
             labels (`torch.Tensor`):
-                A tensor of shape `(num_queries)`
+                A tensor of shape `(num_queries)`.
             object_mask_threshold (`float`):
-                A number between 0 and 1 used to binarize the masks
+                A number between 0 and 1 used to binarize the masks.
 
         Raises:
-            `ValueError`: Raised when the first dimension doesn't match in all input tensors
+            `ValueError`: Raised when the first dimension doesn't match in all input tensors.
 
         Returns:
             `Tuple[`torch.Tensor`, `torch.Tensor`, `torch.Tensor`]`: The `masks`, `scores` and `labels` without the
-            region < `object_mask_threshold`
+            region < `object_mask_threshold`.
         """
         if not (masks.shape[0] == scores.shape[0] == labels.shape[0]):
             raise ValueError("mask, scores and labels must have the same shape!")
@@ -450,10 +450,10 @@ class MaskFormerFeatureExtractor(FeatureExtractionMixin, ImageFeatureExtractionM
 
         Args:
             outputs ([`MaskFormerForInstanceSegmentationOutput`]):
-                The outputs from [`MaskFormerForInstanceSegmentation`]
+                The outputs from [`MaskFormerForInstanceSegmentation`].
 
         Returns:
-            `torch.Tensor`: A tensor of shape `batch_size, height, width`
+            `torch.Tensor`: A tensor of shape `batch_size, height, width`.
         """
         segmentation = self.post_process_segmentation(outputs, target_size)
         semantic_segmentation = segmentation.argmax(dim=1)

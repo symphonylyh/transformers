@@ -1616,17 +1616,18 @@ class MaskFormerHungarianMatcher(nn.Module):
         """Performs the matching
 
         Params:
-            outputs (`Dict[str, Tensor]`): This is a dict that contains at least these entries:
-                - *masks_queries_logits* -- A `torch.Tensor` of dim `batch_size, num_queries, num_classes` with the
+            masks_queries_logits (`torch.Tensor`):
+                A tensor` of dim `batch_size, num_queries, num_classes` with the
                   classification logits.
-                - *class_queries_logits* -- A `torch.Tensor` of dim `batch_size, num_queries, H_pred, W_pred` with the
+            class_queries_logits (`torch.Tensor`):
+                A tensor` of dim `batch_size, num_queries, height, width` with the
                   predicted masks.
 
-            labels (`Dict[str, Tensor]`):
-                This is a list of labels (len(labels) = batch_size), where each target is a dict containing:
-                - **class_labels** -- A `torch.Tensor` of dim `num_target_boxes` (where num_target_boxes is the number
+            class_labels (`torch.Tensor`):
+                A tensor` of dim `num_target_boxes` (where num_target_boxes is the number
                   of ground-truth objects in the target) containing the class labels.
-                - **mask_labels** -- A `torch.Tensor` of dim `num_target_boxes, H_gt, W_gt` containing the target
+            mask_labels (`torch.Tensor`):
+                A tensor` of dim `num_target_boxes, height, width` containing the target
                   masks.
 
         Returns:
@@ -1698,13 +1699,13 @@ class MaskFormerLoss(nn.Module):
 
         Args:
             num_classes (`int`):
-                The number of classes
+                The number of classes.
             matcher ([`MaskFormerHungarianMatcher]`):
-                A torch module that computes the assigments between the predictions and labels
+                A torch module that computes the assigments between the predictions and labels.
             weight_dict (`Dict[str, float]`):
-                A dictionary of weights to be applied to the different losses
+                A dictionary of weights to be applied to the different losses.
             eos_coef (float):
-                Weight to apply to the null class
+                Weight to apply to the null class.
         """
 
         super().__init__()
@@ -1713,7 +1714,6 @@ class MaskFormerLoss(nn.Module):
         self.matcher = matcher
         self.weight_dict = weight_dict
         self.eos_coef = eos_coef
-        self.losses = ["labels", "masks"]
         empty_weight = torch.ones(self.num_classes + 1)
         empty_weight[-1] = self.eos_coef
         self.register_buffer("empty_weight", empty_weight)
@@ -2072,11 +2072,11 @@ class MaskformerMLPPredictionHead(nn.Sequential):
 
         Args:
             input_dim (`int`):
-                The input dimensions
+                The input dimensions.
             hidden_dim (`int`):
-                The hidden dimensions
+                The hidden dimensions.
             output_dim (`int`):
-                The output dimensions
+                The output dimensions.
             num_layers (int, *optional*, defaults to `3`):
                 The number of layers.
         """
@@ -2133,10 +2133,10 @@ class MaskFormerTransformerModule(nn.Module):
 
     def __init__(self, in_features: int, config: MaskFormerConfig):
         super().__init__()
-        hidden_size: int = config.detr_config.hidden_size
+        hidden_size = config.detr_config.hidden_size
+        should_project = in_features != hidden_size
         self.position_embedder = MaskFormerSinePositionEmbedding(num_pos_feats=hidden_size // 2, normalize=True)
         self.queries_embedder = nn.Embedding(config.detr_config.num_queries, hidden_size)
-        should_project = in_features != hidden_size
         self.input_projection = nn.Conv2d(in_features, hidden_size, kernel_size=1) if should_project else None
         self.transformer_decoder = DetrDecoder(config=config.detr_config)
 
@@ -2430,11 +2430,10 @@ class MaskFormerForInstanceSegmentation(MaskFormerPretrainedModel):
         return_dict: Optional[bool] = True,
     ) -> MaskFormerForInstanceSegmentationOutput:
         r"""
-        labels (`List[Dict]` of len `(batch_size,)`, *optional*):
-            Labels for computing the classification and binary mask loss. List of dicts, each dictionary containing at
-            least the following 2 keys: 'class_labels' and 'mask_labels' (the class labels and masks labels of an image
-            in the batch respectively). The class labels themselves should be a `torch.LongTensor` of shape
-            (`num_classes) and the mask_labels a `torch.FloatTensor` of shape `(num_classes, height, width)`.
+        mask_labels (`torch.FloatTensor`, *optional*, defaults to `None`):
+            A tensor of shape `(num_classes, height, width)`.
+        class_labels (`torch.LongTensor`, *optional*, defaults to `None`)::
+            A tensor of shape (`num_classes).
 
         Returns:
 

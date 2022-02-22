@@ -669,10 +669,6 @@ if __name__ == "__main__":
     config_dir: Path = args.configs_dir
     save_directory: Path = args.pytorch_dump_folder_path
 
-    checkpoints_dir = Path("/home/zuppif/Documents/Work/hugging_face/maskformer/weights")
-
-    config_dir = Path("/home/zuppif/Documents/Work/hugging_face/maskformer/MaskFormer/configs")
-
     if not save_directory.exists():
         save_directory.mkdir(parents=True)
 

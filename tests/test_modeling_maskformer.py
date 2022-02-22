@@ -31,7 +31,11 @@ from .test_modeling_common import ModelTesterMixin
 if is_torch_available():
     import torch
 
-    from transformers import MaskFormerForInstanceSegmentation, MaskFormerModel
+    from transformers import (
+        MASKFORMER_PRETRAINED_MODEL_ARCHIVE_LIST,
+        MaskFormerForInstanceSegmentation,
+        MaskFormerModel,
+    )
     from transformers.models.maskformer.modeling_maskformer import (
         MaskFormerForInstanceSegmentationOutput,
         MaskFormerOutput,
@@ -42,10 +46,6 @@ if is_torch_available():
 
 if is_vision_available():
     from PIL import Image
-
-# TODO change it once pushed to Facebook
-MASKFORMER_PRETRAINED_MODEL_ARCHIVE_LIST = ["/home/zuppif/Desktop/hf/models/maskformer-swin-small-coco"]
-MASKFORMER_PRETRAINED_CONFIG_ARCHIVE_MAP = ["/home/zuppif/Desktop/hf/models/maskformer-swin-small-coco"]
 
 
 class MaskFormerModelTester:
