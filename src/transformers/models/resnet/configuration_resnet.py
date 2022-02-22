@@ -25,13 +25,12 @@ RESNET_PRETRAINED_CONFIG_ARCHIVE_MAP = {
 }
 
 
-
 class ResNetConfig(PretrainedConfig):
     r"""
     This is the configuration class to store the configuration of a [`ResNetModel`]. It is used to instantiate an
     ConvNeXT model according to the specified arguments, defining the model architecture. Instantiating a configuration
-    with the defaults will yield a similar configuration to that of the ConvNeXT
-    [](https://huggingface.co/) architecture.
+    with the defaults will yield a similar configuration to that of the ConvNeXT [](https://huggingface.co/)
+    architecture.
 
     Configuration objects inherit from [`PretrainedConfig`] and can be used to control the model outputs. Read the
     documentation from [`PretrainedConfig`] for more information.
@@ -63,9 +62,9 @@ class ResNetConfig(PretrainedConfig):
     ```python
     >>> from transformers import ResNetModel, ResNetConfig
 
-    >>> # Initializing a ResNet resnet-tiny-224 style configuration
+    >>> # Initializing a ResNet resnet28-224 style configuration
     >>> configuration = ResNetConfig()
-    >>> # Initializing a model from the resnet-tiny-224 style configuration
+    >>> # Initializing a model from the resnet28-224 style configuration
     >>> model = ResNetModel(configuration)
     >>> # Accessing the model configuration
     >>> configuration = model.config
@@ -75,11 +74,11 @@ class ResNetConfig(PretrainedConfig):
     def __init__(
         self,
         num_channels=3,
-        patch_size=4,
-        num_stages=4,
         hidden_sizes=None,
         depths=None,
-        hidden_act="gelu",
+        embeddings_type="classic",
+        layer_type="basic",
+        hidden_act="relu",
         initializer_range=0.02,
         layer_norm_eps=1e-12,
         is_encoder_decoder=False,
@@ -90,10 +89,10 @@ class ResNetConfig(PretrainedConfig):
         super().__init__(**kwargs)
 
         self.num_channels = num_channels
-        self.patch_size = patch_size
-        self.num_stages = num_stages
-        self.hidden_sizes = [96, 192, 384, 768] if hidden_sizes is None else hidden_sizes
-        self.depths = [3, 3, 9, 3] if depths is None else depths
+        self.hidden_sizes = [64, 64, 128, 256, 512] if hidden_sizes is None else hidden_sizes
+        self.depths = [3, 4, 6, 3] if depths is None else depths
+        self.layer_type = layer_type
+        self.embeddings_type = embeddings_type
         self.hidden_act = hidden_act
         self.initializer_range = initializer_range
         self.layer_norm_eps = layer_norm_eps
