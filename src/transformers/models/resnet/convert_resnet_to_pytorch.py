@@ -40,27 +40,6 @@ from typing import List
 
 @dataclass
 class Tracker:
-    """This class tracks all the operations of a given module by performing a forward pass.
-    Example:
-        >>> import torch
-        >>> import torch.nn as nn
-        >>> from glasses.utils import Tracker
-        >>> model = nn.Sequential(nn.Linear(1, 64), nn.ReLU(), nn.Linear(64,10), nn.ReLU())
-        >>> tr = Tracker(model)
-        >>> tr(x)
-        >>> print(tr.traced) # all operations
-        >>> print('-----')
-        >>> print(tr.parametrized) # all operations with learnable params
-        outputs
-        ``[Linear(in_features=1, out_features=64, bias=True),
-        ReLU(),
-        Linear(in_features=64, out_features=10, bias=True),
-        ReLU()]
-        -----
-        [Linear(in_features=1, out_features=64, bias=True),
-        Linear(in_features=64, out_features=10, bias=True)]``
-    """
-
     module: nn.Module
     traced: List[nn.Module] = field(default_factory=list)
     handles: list = field(default_factory=list)
@@ -89,24 +68,6 @@ class Tracker:
 
 @dataclass
 class ModuleTransfer:
-    """This class transfers the weight from one module to another assuming
-    they have the same set of operations but they were defined in a different way.
-    :Examples
-        >>> import torch
-        >>> import torch.nn as nn
-        >>> from eyes.utils import ModuleTransfer
-        >>> model_a = nn.Sequential(nn.Linear(1, 64), nn.ReLU(), nn.Linear(64,10), nn.ReLU())
-        >>> def block(in_features, out_features):
-        >>>     return nn.Sequential(nn.Linear(in_features, out_features),
-                                nn.ReLU())
-        >>> model_b = nn.Sequential(block(1,64), block(64,10))
-        >>> # model_a and model_b are the same thing but defined in two different ways
-        >>> x = torch.ones(1, 1)
-        >>> trans = ModuleTransfer(src=model_a, dest=model_b)
-        >>> trans(x)
-        # now module_b has the same weight of model_a
-    """
-
     src: nn.Module
     dest: nn.Module
     verbose: int = 0
