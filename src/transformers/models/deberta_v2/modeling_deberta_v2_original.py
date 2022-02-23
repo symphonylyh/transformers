@@ -408,7 +408,6 @@ class DebertaV2Encoder(nn.Module):
 
             self.position_buckets = getattr(config, "position_buckets", -1)
             pos_ebd_size = self.max_relative_positions * 2
-            self.num_heads = config.num_attention_heads # HHH add
 
             if self.position_buckets > 0:
                 pos_ebd_size = self.position_buckets * 2
@@ -447,21 +446,6 @@ class DebertaV2Encoder(nn.Module):
             )
         return relative_pos
 
-    def get_rel_pos_precompute(self, hidden_states, query_states=None, relative_pos=None):
-        if self.relative_attention and relative_pos is None:
-            q = query_states.size(-2) if query_states is not None else hidden_states.size(-2)
-            relative_pos = build_relative_position(
-                q, hidden_states.size(-2), bucket_size=self.position_buckets, max_position=self.max_relative_positions
-            )
-            
-            # precompute c2p_pos & p2c_pos (see DisentangledSelfAttention.disentangled_attention_bias)
-            pos_ebd_size = self.max_relative_positions
-            att_span = pos_ebd_size
-            relative_pos = relative_pos.long().to(hidden_states.device)
-            c2p_pos = torch.clamp(relative_pos + att_span, 0, att_span * 2 - 1).squeeze(0).expand([hidden_states.size(0)*self.num_heads, relative_pos.size(-2), relative_pos.size(-1)]) # [B*N, S, S]
-            p2c_pos = torch.clamp(-relative_pos + att_span, 0, att_span * 2 - 1).squeeze(0).expand([hidden_states.size(0)*self.num_heads, relative_pos.size(-2), relative_pos.size(-1)]) # [B*N, S, S]
-        return [c2p_pos, p2c_pos]
-
     def forward(
         self,
         hidden_states,
@@ -478,7 +462,6 @@ class DebertaV2Encoder(nn.Module):
             input_mask = (attention_mask.sum(-2) > 0)
         attention_mask = self.get_attention_mask(attention_mask)
         relative_pos = self.get_rel_pos(hidden_states, query_states, relative_pos)
-        # relative_pos = self.get_rel_pos_precompute(hidden_states, query_states, relative_pos)
 
         all_hidden_states = () if output_hidden_states else None
         all_attentions = () if output_attentions else None
@@ -650,7 +633,7 @@ class DisentangledSelfAttention(nn.Module):
                     self.pos_query_proj = nn.Linear(config.hidden_size, self.all_head_size)
 
         self.dropout = StableDropout(config.attention_probs_dropout_prob)
-        
+
     def transpose_for_scores(self, x, attention_heads):
         new_x_shape = x.size()[:-1] + (attention_heads, -1)
         x = x.view(*new_x_shape)
@@ -763,17 +746,17 @@ class DisentangledSelfAttention(nn.Module):
         if self.share_att_key:
             pos_query_layer = self.transpose_for_scores(
                 self.query_proj(rel_embeddings), self.num_attention_heads
-            )#.repeat(query_layer.size(0) // self.num_attention_heads, 1, 1)
-            pos_key_layer = self.transpose_for_scores(self.key_proj(rel_embeddings), self.num_attention_heads)#.repeat(query_layer.size(0) // self.num_attention_heads, 1, 1)
+            ).repeat(query_layer.size(0) // self.num_attention_heads, 1, 1)
+            pos_key_layer = self.transpose_for_scores(self.key_proj(rel_embeddings), self.num_attention_heads).repeat(query_layer.size(0) // self.num_attention_heads, 1, 1)
         else:
             if "c2p" in self.pos_att_type or "p2p" in self.pos_att_type:
                 pos_key_layer = self.transpose_for_scores(
                     self.pos_key_proj(rel_embeddings), self.num_attention_heads
-                )#.repeat(query_layer.size(0) // self.num_attention_heads, 1, 1)  # .split(self.all_head_size, dim=-1)
+                ).repeat(query_layer.size(0) // self.num_attention_heads, 1, 1)  # .split(self.all_head_size, dim=-1)
             if "p2c" in self.pos_att_type or "p2p" in self.pos_att_type:
                 pos_query_layer = self.transpose_for_scores(
                     self.pos_query_proj(rel_embeddings), self.num_attention_heads
-                )#.repeat(query_layer.size(0) // self.num_attention_heads, 1, 1)  # .split(self.all_head_size, dim=-1)
+                ).repeat(query_layer.size(0) // self.num_attention_heads, 1, 1)  # .split(self.all_head_size, dim=-1)
         
         score = 0
         # content->position
@@ -786,11 +769,6 @@ class DisentangledSelfAttention(nn.Module):
                 dim=-1,
                 index=c2p_pos.squeeze(0).expand([query_layer.size(0), query_layer.size(1), relative_pos.size(-1)]),
             )
-            # c2p_att = torch.gather(
-            #     c2p_att,
-            #     dim=-1,
-            #     index=relative_pos[0],
-            # )
             score += c2p_att / scale
 
         # position->content
@@ -816,11 +794,6 @@ class DisentangledSelfAttention(nn.Module):
                 dim=-1,
                 index=p2c_pos.squeeze(0).expand([query_layer.size(0), key_layer.size(-2), key_layer.size(-2)]),
             ).transpose(-1, -2)
-            # p2c_att = torch.gather(
-            #     p2c_att,
-            #     dim=-1,
-            #     index=relative_pos[1],
-            # ).transpose(-1, -2)
             score += p2c_att / scale
 
         # position->position
@@ -1087,36 +1060,34 @@ class DebertaV2Model(DebertaV2PreTrainedModel):
         encoder_outputs = self.encoder(
             embedding_output,
             attention_mask,
-            output_hidden_states=False,
+            output_hidden_states=True,
             output_attentions=output_attentions,
             return_dict=return_dict,
         )
-        # encoded_layers = encoder_outputs[1]
+        encoded_layers = encoder_outputs[1]
 
-        # if self.z_steps > 1:
-        #     hidden_states = encoded_layers[-2]
-        #     layers = [self.encoder.layer[-1] for _ in range(self.z_steps)]
-        #     query_states = encoded_layers[-1]
-        #     rel_embeddings = self.encoder.get_rel_embedding()
-        #     attention_mask = self.encoder.get_attention_mask(attention_mask)
-        #     rel_pos = self.encoder.get_rel_pos(embedding_output)
-        #     for layer in layers[1:]:
-        #         query_states = layer(
-        #             hidden_states,
-        #             attention_mask,
-        #             output_attentions=False,
-        #             query_states=query_states,
-        #             relative_pos=rel_pos,
-        #             rel_embeddings=rel_embeddings,
-        #         )
-        #         encoded_layers.append(query_states)
+        if self.z_steps > 1:
+            hidden_states = encoded_layers[-2]
+            layers = [self.encoder.layer[-1] for _ in range(self.z_steps)]
+            query_states = encoded_layers[-1]
+            rel_embeddings = self.encoder.get_rel_embedding()
+            attention_mask = self.encoder.get_attention_mask(attention_mask)
+            rel_pos = self.encoder.get_rel_pos(embedding_output)
+            for layer in layers[1:]:
+                query_states = layer(
+                    hidden_states,
+                    attention_mask,
+                    output_attentions=False,
+                    query_states=query_states,
+                    relative_pos=rel_pos,
+                    rel_embeddings=rel_embeddings,
+                )
+                encoded_layers.append(query_states)
 
-        # sequence_output = encoded_layers[-1]
+        sequence_output = encoded_layers[-1]
 
-        # if not return_dict:
-        #     return (sequence_output,) + encoder_outputs[(1 if output_hidden_states else 2) :]
-
-        sequence_output = encoder_outputs[0]
+        if not return_dict:
+            return (sequence_output,) + encoder_outputs[(1 if output_hidden_states else 2) :]
         
         return BaseModelOutput(
             last_hidden_state=sequence_output,
