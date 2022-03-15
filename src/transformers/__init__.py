@@ -31,8 +31,6 @@ from . import dependency_versions_check
 from .file_utils import (
     _LazyModule,
     is_flax_available,
-    is_pyctcdecode_available,
-    is_pytorch_quantization_available,
     is_scatter_available,
     is_sentencepiece_available,
     is_speech_available,
@@ -211,6 +209,7 @@ _import_structure = {
     "models.detr": ["DETR_PRETRAINED_CONFIG_ARCHIVE_MAP", "DetrConfig"],
     "models.dialogpt": [],
     "models.distilbert": ["DISTILBERT_PRETRAINED_CONFIG_ARCHIVE_MAP", "DistilBertConfig", "DistilBertTokenizer"],
+    "models.dit": [],
     "models.dpr": [
         "DPR_PRETRAINED_CONFIG_ARCHIVE_MAP",
         "DPRConfig",
@@ -273,6 +272,7 @@ _import_structure = {
     "models.realm": ["REALM_PRETRAINED_CONFIG_ARCHIVE_MAP", "RealmConfig", "RealmTokenizer"],
     "models.reformer": ["REFORMER_PRETRAINED_CONFIG_ARCHIVE_MAP", "ReformerConfig"],
     "models.rembert": ["REMBERT_PRETRAINED_CONFIG_ARCHIVE_MAP", "RemBertConfig"],
+    "models.resnet": ["RESNET_PRETRAINED_CONFIG_ARCHIVE_MAP", "ResNetConfig"],
     "models.retribert": ["RETRIBERT_PRETRAINED_CONFIG_ARCHIVE_MAP", "RetriBertConfig", "RetriBertTokenizer"],
     "models.roberta": ["ROBERTA_PRETRAINED_CONFIG_ARCHIVE_MAP", "RobertaConfig", "RobertaTokenizer"],
     "models.roformer": ["ROFORMER_PRETRAINED_CONFIG_ARCHIVE_MAP", "RoFormerConfig", "RoFormerTokenizer"],
@@ -314,6 +314,7 @@ _import_structure = {
         "UNISPEECH_SAT_PRETRAINED_CONFIG_ARCHIVE_MAP",
         "UniSpeechSatConfig",
     ],
+    "models.van": ["VAN_PRETRAINED_CONFIG_ARCHIVE_MAP", "VanConfig"],
     "models.vilt": ["VILT_PRETRAINED_CONFIG_ARCHIVE_MAP", "ViltConfig", "ViltFeatureExtractor", "ViltProcessor"],
     "models.vision_encoder_decoder": ["VisionEncoderDecoderConfig"],
     "models.vision_text_dual_encoder": ["VisionTextDualEncoderConfig", "VisionTextDualEncoderProcessor"],
@@ -579,29 +580,6 @@ else:
         name for name in dir(dummy_scatter_objects) if not name.startswith("_")
     ]
 
-if is_torch_available() and is_pytorch_quantization_available():
-    _import_structure["models.qdqbert"].extend(
-        [
-            "QDQBERT_PRETRAINED_MODEL_ARCHIVE_LIST",
-            "QDQBertForMaskedLM",
-            "QDQBertForMultipleChoice",
-            "QDQBertForNextSentencePrediction",
-            "QDQBertForQuestionAnswering",
-            "QDQBertForSequenceClassification",
-            "QDQBertForTokenClassification",
-            "QDQBertLayer",
-            "QDQBertLMHeadModel",
-            "QDQBertModel",
-            "QDQBertPreTrainedModel",
-            "load_tf_weights_in_qdqbert",
-        ]
-    )
-else:
-    from .utils import dummy_pytorch_quantization_and_torch_objects
-
-    _import_structure["utils.dummy_pytorch_quantization_and_torch_objects"] = [
-        name for name in dir(dummy_pytorch_quantization_and_torch_objects) if not name.startswith("_")
-    ]
 
 # PyTorch-backed objects
 if is_torch_available():
@@ -1287,6 +1265,22 @@ if is_torch_available():
             "ProphetNetPreTrainedModel",
         ]
     )
+    _import_structure["models.qdqbert"].extend(
+        [
+            "QDQBERT_PRETRAINED_MODEL_ARCHIVE_LIST",
+            "QDQBertForMaskedLM",
+            "QDQBertForMultipleChoice",
+            "QDQBertForNextSentencePrediction",
+            "QDQBertForQuestionAnswering",
+            "QDQBertForSequenceClassification",
+            "QDQBertForTokenClassification",
+            "QDQBertLayer",
+            "QDQBertLMHeadModel",
+            "QDQBertModel",
+            "QDQBertPreTrainedModel",
+            "load_tf_weights_in_qdqbert",
+        ]
+    )
     _import_structure["models.rag"].extend(
         ["RagModel", "RagPreTrainedModel", "RagSequenceForGeneration", "RagTokenForGeneration"]
     )
@@ -1329,6 +1323,14 @@ if is_torch_available():
             "RemBertModel",
             "RemBertPreTrainedModel",
             "load_tf_weights_in_rembert",
+        ]
+    )
+    _import_structure["models.resnet"].extend(
+        [
+            "RESNET_PRETRAINED_MODEL_ARCHIVE_LIST",
+            "ResNetForImageClassification",
+            "ResNetModel",
+            "ResNetPreTrainedModel",
         ]
     )
     _import_structure["models.retribert"].extend(
@@ -1476,6 +1478,14 @@ if is_torch_available():
             "UniSpeechSatForXVector",
             "UniSpeechSatModel",
             "UniSpeechSatPreTrainedModel",
+        ]
+    )
+    _import_structure["models.van"].extend(
+        [
+            "VAN_PRETRAINED_MODEL_ARCHIVE_LIST",
+            "VanForImageClassification",
+            "VanModel",
+            "VanPreTrainedModel",
         ]
     )
     _import_structure["models.vilt"].extend(
@@ -1752,6 +1762,7 @@ if is_tf_available():
     _import_structure["models.camembert"].extend(
         [
             "TF_CAMEMBERT_PRETRAINED_MODEL_ARCHIVE_LIST",
+            "TFCamembertForCausalLM",
             "TFCamembertForMaskedLM",
             "TFCamembertForMultipleChoice",
             "TFCamembertForQuestionAnswering",
@@ -2198,6 +2209,8 @@ if is_flax_available():
 
     _import_structure["models.bart"].extend(
         [
+            "FlaxBartDecoderPreTrainedModel",
+            "FlaxBartForCausalLM",
             "FlaxBartForConditionalGeneration",
             "FlaxBartForQuestionAnswering",
             "FlaxBartForSequenceClassification",
@@ -2579,6 +2592,7 @@ if TYPE_CHECKING:
     from .models.realm import REALM_PRETRAINED_CONFIG_ARCHIVE_MAP, RealmConfig, RealmTokenizer
     from .models.reformer import REFORMER_PRETRAINED_CONFIG_ARCHIVE_MAP, ReformerConfig
     from .models.rembert import REMBERT_PRETRAINED_CONFIG_ARCHIVE_MAP, RemBertConfig
+    from .models.resnet import RESNET_PRETRAINED_CONFIG_ARCHIVE_MAP, ResNetConfig
     from .models.retribert import RETRIBERT_PRETRAINED_CONFIG_ARCHIVE_MAP, RetriBertConfig, RetriBertTokenizer
     from .models.roberta import ROBERTA_PRETRAINED_CONFIG_ARCHIVE_MAP, RobertaConfig, RobertaTokenizer
     from .models.roformer import ROFORMER_PRETRAINED_CONFIG_ARCHIVE_MAP, RoFormerConfig, RoFormerTokenizer
@@ -2607,6 +2621,7 @@ if TYPE_CHECKING:
     from .models.trocr import TROCR_PRETRAINED_CONFIG_ARCHIVE_MAP, TrOCRConfig, TrOCRProcessor
     from .models.unispeech import UNISPEECH_PRETRAINED_CONFIG_ARCHIVE_MAP, UniSpeechConfig
     from .models.unispeech_sat import UNISPEECH_SAT_PRETRAINED_CONFIG_ARCHIVE_MAP, UniSpeechSatConfig
+    from .models.van import VAN_PRETRAINED_CONFIG_ARCHIVE_MAP, VanConfig
     from .models.vilt import VILT_PRETRAINED_CONFIG_ARCHIVE_MAP, ViltConfig, ViltFeatureExtractor, ViltProcessor
     from .models.vision_encoder_decoder import VisionEncoderDecoderConfig
     from .models.vision_text_dual_encoder import VisionTextDualEncoderConfig, VisionTextDualEncoderProcessor
@@ -2824,24 +2839,6 @@ if TYPE_CHECKING:
         )
     else:
         from .utils.dummy_scatter_objects import *
-
-    if is_torch_available() and is_pytorch_quantization_available():
-        from .models.qdqbert import (
-            QDQBERT_PRETRAINED_MODEL_ARCHIVE_LIST,
-            QDQBertForMaskedLM,
-            QDQBertForMultipleChoice,
-            QDQBertForNextSentencePrediction,
-            QDQBertForQuestionAnswering,
-            QDQBertForSequenceClassification,
-            QDQBertForTokenClassification,
-            QDQBertLayer,
-            QDQBertLMHeadModel,
-            QDQBertModel,
-            QDQBertPreTrainedModel,
-            load_tf_weights_in_qdqbert,
-        )
-    else:
-        from .utils.dummy_pytorch_quantization_and_torch_objects import *
 
     if is_torch_available():
         # Benchmarks
@@ -3425,6 +3422,20 @@ if TYPE_CHECKING:
             ProphetNetModel,
             ProphetNetPreTrainedModel,
         )
+        from .models.qdqbert import (
+            QDQBERT_PRETRAINED_MODEL_ARCHIVE_LIST,
+            QDQBertForMaskedLM,
+            QDQBertForMultipleChoice,
+            QDQBertForNextSentencePrediction,
+            QDQBertForQuestionAnswering,
+            QDQBertForSequenceClassification,
+            QDQBertForTokenClassification,
+            QDQBertLayer,
+            QDQBertLMHeadModel,
+            QDQBertModel,
+            QDQBertPreTrainedModel,
+            load_tf_weights_in_qdqbert,
+        )
         from .models.rag import RagModel, RagPreTrainedModel, RagSequenceForGeneration, RagTokenForGeneration
         from .models.realm import (
             REALM_PRETRAINED_MODEL_ARCHIVE_LIST,
@@ -3460,6 +3471,12 @@ if TYPE_CHECKING:
             RemBertModel,
             RemBertPreTrainedModel,
             load_tf_weights_in_rembert,
+        )
+        from .models.resnet import (
+            RESNET_PRETRAINED_MODEL_ARCHIVE_LIST,
+            ResNetForImageClassification,
+            ResNetModel,
+            ResNetPreTrainedModel,
         )
         from .models.retribert import RETRIBERT_PRETRAINED_MODEL_ARCHIVE_LIST, RetriBertModel, RetriBertPreTrainedModel
         from .models.roberta import (
@@ -3577,6 +3594,12 @@ if TYPE_CHECKING:
             UniSpeechSatForXVector,
             UniSpeechSatModel,
             UniSpeechSatPreTrainedModel,
+        )
+        from .models.van import (
+            VAN_PRETRAINED_MODEL_ARCHIVE_LIST,
+            VanForImageClassification,
+            VanModel,
+            VanPreTrainedModel,
         )
         from .models.vilt import (
             VILT_PRETRAINED_MODEL_ARCHIVE_LIST,
@@ -3822,6 +3845,7 @@ if TYPE_CHECKING:
         )
         from .models.camembert import (
             TF_CAMEMBERT_PRETRAINED_MODEL_ARCHIVE_LIST,
+            TFCamembertForCausalLM,
             TFCamembertForMaskedLM,
             TFCamembertForMultipleChoice,
             TFCamembertForQuestionAnswering,
@@ -4170,6 +4194,8 @@ if TYPE_CHECKING:
             FlaxAutoModelForVision2Seq,
         )
         from .models.bart import (
+            FlaxBartDecoderPreTrainedModel,
+            FlaxBartForCausalLM,
             FlaxBartForConditionalGeneration,
             FlaxBartForQuestionAnswering,
             FlaxBartForSequenceClassification,
