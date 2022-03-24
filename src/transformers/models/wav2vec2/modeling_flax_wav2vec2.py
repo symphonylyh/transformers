@@ -404,9 +404,11 @@ class FlaxWav2Vec2FeatureEncoder(nn.Module):
     def setup(self):
         self.conv_layers = FlaxConvLayersCollection(self.config, dtype=self.dtype)
 
-    def __call__(self, input_values):
+    def __call__(self, input_values, freeze_feature_encoder=False):
         hidden_states = input_values[:, :, None]
         hidden_states = self.conv_layers(hidden_states)
+        if freeze_feature_encoder:
+            hidden_states = jax.lax.stop_gradient(hidden_states)
         return hidden_states
 
 
@@ -629,7 +631,7 @@ class FlaxWav2Vec2EncoderLayerStableLayerNormCollection(nn.Module):
         if output_hidden_states:
             all_hidden_states += (hidden_states,)
 
-        outputs = (hidden_states,)
+        outputs = (hidden_states, all_hidden_states, all_attentions)
 
         if not return_dict:
             return tuple(v for v in outputs if v is not None)
@@ -678,13 +680,20 @@ class FlaxWav2Vec2StableLayerNormEncoder(nn.Module):
             return_dict=return_dict,
         )
 
-        hidden_states = self.layer_norm(outputs[0])
+        last_hidden_state = self.layer_norm(outputs[0])
+
+        # update the last element in `hidden_states` after applying `layernorm` above
+        hidden_states = None
+        if output_hidden_states:
+            hidden_states = outputs[1]
+            hidden_states = hidden_states[:-1] + (last_hidden_state,)
 
         if not return_dict:
-            return (hidden_states,) + outputs[1:]
+            outputs = (last_hidden_state, hidden_states) + (outputs[2:] if output_hidden_states else outputs[1:])
+            return tuple(v for v in outputs if v is not None)
 
         return FlaxBaseModelOutput(
-            last_hidden_state=hidden_states, hidden_states=outputs.hidden_states, attentions=outputs.attentions
+            last_hidden_state=last_hidden_state, hidden_states=hidden_states, attentions=outputs.attentions
         )
 
 
@@ -875,6 +884,7 @@ class FlaxWav2Vec2PreTrainedModel(FlaxPreTrainedModel):
         train: bool = False,
         output_attentions: Optional[bool] = None,
         output_hidden_states: Optional[bool] = None,
+        freeze_feature_encoder: bool = False,
         return_dict: Optional[bool] = None,
     ):
         output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
@@ -903,6 +913,7 @@ class FlaxWav2Vec2PreTrainedModel(FlaxPreTrainedModel):
             not train,
             output_attentions,
             output_hidden_states,
+            freeze_feature_encoder,
             return_dict,
             rngs=rngs,
         )
@@ -939,9 +950,10 @@ class FlaxWav2Vec2Module(nn.Module):
         deterministic=True,
         output_attentions=None,
         output_hidden_states=None,
+        freeze_feature_encoder=False,
         return_dict=None,
     ):
-        extract_features = self.feature_extractor(input_values)
+        extract_features = self.feature_extractor(input_values, freeze_feature_encoder=freeze_feature_encoder)
 
         # make sure that no loss is computed on padded inputs
         if attention_mask is not None:
@@ -1012,6 +1024,26 @@ class FlaxWav2Vec2Module(nn.Module):
 
         return input_lengths
 
+    def _get_feature_vector_attention_mask(
+        self, feature_vector_length: int, attention_mask: jnp.ndarray, add_adapter=None
+    ):
+
+        # Effectively attention_mask.sum(-1), but not inplace to be able to run
+        # on inference mode.
+        non_padded_lengths = attention_mask.cumsum(axis=-1)[:, -1]
+
+        output_lengths = self._get_feat_extract_output_lengths(non_padded_lengths, add_adapter=add_adapter)
+
+        batch_size = attention_mask.shape[0]
+
+        attention_mask = jnp.zeros((batch_size, feature_vector_length), dtype=attention_mask.dtype)
+        # these two operations makes sure that all values before the output lengths idxs are attended to
+        attention_mask = attention_mask.at[(jnp.arange(attention_mask.shape[0]), output_lengths - 1)].set(1)
+        attention_mask = jnp.flip(jnp.flip(attention_mask, axis=-1).cumsum(axis=-1), axis=-1)
+
+        attention_mask = jnp.array(attention_mask, dtype=bool)
+        return attention_mask
+
 
 @add_start_docstrings(
     "The bare Wav2Vec2 Model transformer outputting raw hidden-states without any specific head on top.",
@@ -1081,6 +1113,7 @@ class FlaxWav2Vec2ForCTCModule(nn.Module):
         deterministic=True,
         output_attentions=None,
         output_hidden_states=None,
+        freeze_feature_encoder=False,
         return_dict=None,
     ):
         outputs = self.wav2vec2(
@@ -1090,6 +1123,7 @@ class FlaxWav2Vec2ForCTCModule(nn.Module):
             deterministic=deterministic,
             output_attentions=output_attentions,
             output_hidden_states=output_hidden_states,
+            freeze_feature_encoder=freeze_feature_encoder,
             return_dict=return_dict,
         )
 
@@ -1179,10 +1213,6 @@ overwrite_call_docstring(
 append_replace_return_docstrings(FlaxWav2Vec2ForCTC, output_type=FlaxCausalLMOutput, config_class=Wav2Vec2Config)
 
 
-class FlaxWav2Vec2ForCTCModule(nn.Module):
-    config: Wav2Vec2Config
-
-
 class FlaxWav2Vec2ForPreTrainingModule(nn.Module):
     config: Wav2Vec2Config
     dtype: jnp.dtype = jnp.float32
@@ -1212,6 +1242,7 @@ class FlaxWav2Vec2ForPreTrainingModule(nn.Module):
         deterministic: bool = True,
         output_attentions=None,
         output_hidden_states=None,
+        freeze_feature_enocder=False,
         return_dict=None,
     ):
         r"""
@@ -1232,6 +1263,7 @@ class FlaxWav2Vec2ForPreTrainingModule(nn.Module):
             output_hidden_states=output_hidden_states,
             mask_time_indices=mask_time_indices,
             deterministic=deterministic,
+            freeze_feature_encoder=freeze_feature_enocder,
             return_dict=return_dict,
         )
 
@@ -1290,6 +1322,7 @@ class FlaxWav2Vec2ForPreTraining(FlaxWav2Vec2PreTrainedModel):
         train: bool = False,
         output_attentions: Optional[bool] = None,
         output_hidden_states: Optional[bool] = None,
+        freeze_feature_encoder: bool = False,
         return_dict: Optional[bool] = None,
     ):
         output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
@@ -1322,6 +1355,7 @@ class FlaxWav2Vec2ForPreTraining(FlaxWav2Vec2PreTrainedModel):
             not train,
             output_attentions,
             output_hidden_states,
+            freeze_feature_encoder,
             return_dict,
             rngs=rngs,
         )
@@ -1378,7 +1412,3 @@ overwrite_call_docstring(
 append_replace_return_docstrings(
     FlaxWav2Vec2ForPreTraining, output_type=FlaxWav2Vec2ForPreTrainingOutput, config_class=Wav2Vec2Config
 )
-
-
-class FlaxWav2Vec2ForCTCModule(nn.Module):
-    config: Wav2Vec2Config

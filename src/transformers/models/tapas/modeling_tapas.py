@@ -1799,13 +1799,70 @@ def _segment_reduce(values, index, segment_reduce_fn, name):
     # changed "view" by "reshape" in the following line
     flat_values = values.reshape(flattened_shape.tolist())
 
-    segment_means = scatter(
-        src=flat_values,
-        index=flat_index.indices.long(),
-        dim=0,
-        dim_size=int(flat_index.num_segments),
-        reduce=segment_reduce_fn,
-    )
+    def scatter_naive1D(src, index, dim, dim_size, reduce):
+        '''
+        Assume 1D tensor.
+        '''
+        assert dim == 0 and src.dim() == 1 and index.dim() == 1, "Only support 1D scatter!"
+
+        def reduce_op(l, op):
+            result = 0
+            if op == 'min':
+                result = torch.min(l)
+            elif op == 'max':
+                result = torch.max(l)
+            elif op == 'sum':
+                result = torch.sum(l)
+            elif op == 'mean':
+                result = torch.mean(l)
+            else:
+                assert False, 'Reduce op not supported!'
+
+            return result 
+            
+        output = torch.zeros(dim_size, dtype=src.dtype, device=src.device)
+        
+        index_range = torch.max(index) + 1
+        bucket = [[] for _ in range(index_range)]
+
+        for i in range(len(src)):
+            bucket[index[i]].append(src[i])
+        
+        for i in range(len(bucket)):
+            if bucket[i]:
+                bucket[i] = reduce_op(torch.as_tensor(bucket[i], dtype=src.dtype, device=src.device), reduce)
+            else:
+                bucket[i] = 0
+        
+        output[:len(bucket)] = torch.as_tensor(bucket, dtype=src.dtype, device=src.device)
+        
+        return output
+    
+    NAIVE_SCATTER = False
+    if NAIVE_SCATTER:
+        segment_means = scatter_naive1D(
+            src=flat_values,
+            index=flat_index.indices.long(),
+            dim=0,
+            dim_size=int(flat_index.num_segments),
+            reduce=segment_reduce_fn,
+        )
+    else:
+        segment_means = scatter(
+            src=flat_values,
+            index=flat_index.indices.long(),
+            dim=0,
+            dim_size=int(flat_index.num_segments),
+            reduce=segment_reduce_fn,
+        )
+
+    # print("src", flat_values.shape)
+    # print("index", flat_index.indices.long().shape)
+    # print("index range", torch.min(flat_index.indices.long()), torch.max(flat_index.indices.long()))
+    # print("dim size", int(flat_index.num_segments))
+    # print("reduce", segment_reduce_fn)
+    # print("output", segment_means.shape, segment_means.type())
+    # print("")
 
     # Unflatten the values.
     new_shape = torch.cat(
